@@ -1,52 +1,97 @@
-import { asyncComponent } from './utils'
-import store from '../store'
+import { asyncComponent } from "./utils";
+import store from "../store";
 
-import DefaultHeader from '@/js/components/headers/DefaultHeader'
+import DefaultHeader from "@/js/components/headers/DefaultHeader";
+import DefaultFooter from "@/js/components/footer/Footer";
+import { defaults } from "lodash";
 
-function getDefaultHeader (title) {
+function getDefaultHeader(title) {
     return {
         components: {
-            DefaultHeader
+            DefaultHeader,
         },
-        render (createElement) {
-            return createElement('DefaultHeader', {
+        render(createElement) {
+            return createElement("DefaultHeader", {
                 props: {
-                    title
-                }
-            })
-        }
-    }
+                    title,
+                },
+            });
+        },
+    };
+}
+
+function getDefaultFooter() {
+    return {
+        components: {
+            DefaultFooter,
+        },
+        render(createElement) {
+            return createElement("DefaultFooter");
+        },
+    };
 }
 
 export default [
     {
-        path: '/',
+        path: "/",
         components: {
-            default:asyncComponent('Index')
+            default: asyncComponent("Index"),
         },
         meta: {
-            needAuth: true
+            needAuth: true,
         },
         children: [
             {
-                path: '',
-                name: 'HomeMain',
-                components:  {
-                    default: asyncComponent('main/Index'),
-                    header: getDefaultHeader('HomeMain')
+                path: "",
+                name: "HomeMain",
+                components: {
+                    default: asyncComponent("main/Index"),
+                    header: getDefaultHeader("HomeMain"),
+                    footer: getDefaultFooter(),
                 },
             },
             {
                 path: `test`,
-                name: 'Test',
+                name: "Test",
                 components: {
                     default: asyncComponent(`main/Test`),
-                    header: getDefaultHeader('Test')
+                    header: getDefaultHeader("Test"),
                 },
                 meta: {
-                    action: true
-                }
+                    action: true,
+                },
             },
-        ]
-    }
-]
+            {
+                path: "companyInfo",
+                name: "CompanyInfo",
+                components: {
+                    default: asyncComponent("companyInfo/CompanyInfo"),
+                    header: getDefaultHeader("CompanyInfo"),
+                    footer: getDefaultFooter(),
+                },
+            },
+            {
+                path: "service",
+                name: "Service",
+                components: {
+                    default: asyncComponent("service/Service"),
+                    footer: getDefaultFooter(),
+                },
+                meta: {
+                    action: true,
+                },
+            },
+            {
+                path: "recruit",
+                name: "Recruit",
+                components: {
+                    default: asyncComponent("recruit/Recruit"),
+                    footer: getDefaultFooter(),
+                },
+                meta: {
+                    action: true,
+                },
+            },
+        ],
+    },
+];

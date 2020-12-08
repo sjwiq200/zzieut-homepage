@@ -1,8 +1,29 @@
+// Reset
+@import "./reset";
+
 // Fonts
-@import url('https://fonts.googleapis.com/css?family=Nunito');
+@import url("https://fonts.googleapis.com/css?family=Nunito");
 
 // Variables
-@import 'variables';
+@import "variables";
 
 // Bootstrap
-@import '~bootstrap/scss/bootstrap';
+@import "~bootstrap/scss/bootstrap";
+
+// VueSlickCarousel
+@import "../../node_modules/vue-slick-carousel/dist/vue-slick-carousel.css";
+@import "../../node_modules//vue-slick-carousel/dist/vue-slick-carousel-theme.css";
+
+//CompanyInfo
+@import "./CompanyInfo";
+@import "./CompanyInfoResponsive";
+
+//service
+@import "./service.scss";
+
+// Recruit
+@import "Recruit";
+
+//Footer
+@import "./Footer";
+@import "./FooterResponsive.scss";
