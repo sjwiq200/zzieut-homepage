@@ -26,13 +26,20 @@
             type="text"
             placeholder="email"
             @input="adjustLocation"
+<<<<<<< HEAD
             @keydown.tab="checkClicked"
+=======
+>>>>>>> origin
         />
         <input type="password" placeholder="Password" @click="checkClicked" />
         <span class="forgetPW">비밀번호를 잊으셨나요?</span>
         <button>로그인</button>
     </form>
 </template>
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin
 <script>
 export default {
     props: ["propsData"],

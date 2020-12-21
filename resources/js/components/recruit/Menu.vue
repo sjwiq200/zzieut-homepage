@@ -3,36 +3,21 @@
         <ul>
             <li class="title">Product</li>
             <li
-                class="teams active"
+                :class="[isSelected === 1 ? 'active' : '', 'teams']"
                 name="server"
-                @click="
-                    e => {
-                        eventHandler(e);
-                        selectMenu(1);
-                    }
-                "
+                @click="selectMenu(1)"
             >
                 Server
             </li>
             <li
-                class="teams"
-                @click="
-                    e => {
-                        eventHandler(e);
-                        selectMenu(2);
-                    }
-                "
+                :class="[isSelected === 2 ? 'active' : '', 'teams']"
+                @click="selectMenu(2)"
             >
                 iOS
             </li>
             <li
-                class="teams"
-                @click="
-                    e => {
-                        eventHandler(e);
-                        selectMenu(3);
-                    }
-                "
+                :class="[isSelected === 3 ? 'active' : '', 'teams']"
+                @click="selectMenu(3)"
             >
                 Android
             </li>
@@ -40,13 +25,8 @@
         <ul>
             <li class="title">Data Analysis & Machine Learning</li>
             <li
-                class="teams"
-                @click="
-                    e => {
-                        eventHandler(e);
-                        selectMenu(4);
-                    }
-                "
+                :class="[isSelected === 4 ? 'active' : '', 'teams']"
+                @click="selectMenu(4)"
             >
                 Data Scientist
             </li>
@@ -57,7 +37,7 @@
 export default {
     data() {
         return {
-            isSelected: "1",
+            isSelected: 1,
             color: ""
         };
     },
@@ -65,13 +45,6 @@ export default {
         selectMenu(idx) {
             this.isSelected = idx;
             this.$emit("changeSelected", this.isSelected);
-        },
-        eventHandler(e) {
-            const active = document.querySelectorAll(".active");
-            active.forEach(el => {
-                el.classList.remove("active");
-            });
-            e.target.classList.add("active");
         }
     }
 };

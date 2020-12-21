@@ -12026,7 +12026,7 @@ a.text-dark:focus {
 .service .summarySection {
   display: flex;
   width: 75%;
-  height: 350px;
+  height: 250px;
   margin: 0 auto;
   margin-top: 50px;
   border-bottom: #bcc0c6 solid 1px;
@@ -12043,23 +12043,23 @@ a.text-dark:focus {
 }
 
 .service .summarySection .descriptionBox .description {
-  height: 50%;
+  height: 100px;
   border-bottom: black solid 1px;
   line-height: 20px;
   font-size: 12px;
 }
 
 .service .summarySection .descriptionBox .listBox {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-gap: 20%;
   height: 50%;
 }
 
 .service .summarySection .descriptionBox .listBox .logoList {
   display: flex;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.8vw;
 }
 
 .service .serviceLists {
@@ -12086,10 +12086,7 @@ a.text-dark:focus {
 
 .service .serviceLists article {
   display: flex;
-}
-
-.service .serviceLists article .emptyBox {
-  width: 20%;
+  padding-left: 8rem;
 }
 
 .service .serviceLists article .flatformBody {
@@ -12108,6 +12105,7 @@ a.text-dark:focus {
 }
 
 .service .serviceLists article .flatformBody .historyBox {
+  padding-left: 10px;
   margin-top: 50px;
 }
 
@@ -12150,6 +12148,118 @@ a.text-dark:focus {
 
 .service .serviceLists article .flatformBody .timelineArea li .content {
   color: #ed3f37;
+}
+
+@media (min-width: 320px) and (max-width: 720px) {
+  .service .slickContainer {
+    width: 100%;
+  }
+
+  .service .summarySection {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
+  .service .summarySection .mainTitle {
+    font-size: 4vw;
+  }
+
+  .service .summarySection .descriptionBox {
+    width: 100%;
+  }
+
+  .service .summarySection .descriptionBox .description {
+    font-size: 1vw;
+  }
+
+  .service .summarySection .descriptionBox .listBox {
+    display: inline;
+  }
+
+  .service .serviceLists {
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .service .serviceLists .mainContainer {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .service .serviceLists .mainContainer .serviceName {
+    width: 75%;
+    margin: auto;
+    font-size: 4vw;
+  }
+
+  .service .serviceLists article {
+    padding-left: 40px;
+  }
+
+  .service .serviceLists article h2,
+  .service .serviceLists article span {
+    padding-left: 10px;
+  }
+}
+
+@media (min-width: 720px) and (max-width: 1024px) {
+  .service .slickContainer {
+    width: 100%;
+  }
+
+  .service .summarySection {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+
+  .service .summarySection .mainTitle {
+    width: auto;
+    font-size: 3vw;
+  }
+
+  .service .summarySection .descriptionBox {
+    width: 100%;
+  }
+
+  .service .summarySection .descriptionBox .description {
+    font-size: 1vw;
+  }
+
+  .service .summarySection .descriptionBox .listBox {
+    display: flex;
+    justify-content: space-between;
+    grid-gap: 0px;
+    height: auto;
+  }
+
+  .service .serviceLists {
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .service .serviceLists .mainContainer {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .service .serviceLists .mainContainer .serviceName {
+    width: 75%;
+    margin: auto;
+    font-size: 3vw;
+  }
+
+  .service .serviceLists article {
+    width: 75%;
+    margin: auto;
+    padding: 0;
+  }
+
+  .service .serviceLists article h2,
+  .service .serviceLists article span {
+    padding-left: 10px;
+  }
 }
 
 .Recruit {
@@ -12332,6 +12442,7 @@ a.text-dark:focus {
   margin-bottom: 0;
 }
 
+<<<<<<< HEAD
 .Header {
   width: 100%;
   color: #333;
@@ -12446,6 +12557,17 @@ a.text-dark:focus {
   margin: 0 auto;
   font-size: 30px;
   background-color: #e3342f;
+=======
+.registerWrapper {
+  border: 1px solid red;
+}
+
+.registerWrapper .test {
+  width: 350px;
+  margin: 50px auto;
+  font-size: 30px;
+  background-color: #ee3f35;
+>>>>>>> origin
 }
 
 .registerWrapper .test .tabs {
@@ -12463,7 +12585,11 @@ a.text-dark:focus {
 }
 
 .registerWrapper .test .tabs .activeTab {
+<<<<<<< HEAD
   background: #e3342f;
+=======
+  background: #ee3f35;
+>>>>>>> origin
   color: black;
   font-weight: bold;
 }
@@ -12474,9 +12600,15 @@ a.text-dark:focus {
 
 .loginForm {
   width: 320px;
+<<<<<<< HEAD
   padding: 0 25px;
   margin: auto;
   background: #e3342f;
+=======
+  padding: 60px 25px;
+  margin: auto;
+  background: #ee3f35;
+>>>>>>> origin
   display: flex;
   flex-direction: column;
 }

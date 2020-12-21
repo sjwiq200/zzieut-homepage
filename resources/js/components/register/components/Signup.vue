@@ -16,6 +16,10 @@
         </form>
     </div>
 </template>
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin
 <script>
 export default {
     data() {

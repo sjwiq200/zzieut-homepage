@@ -1,5 +1,6 @@
 .service {
     margin-bottom: 150px;
+
     .slickContainer {
         width: 75%;
         margin: 0 auto;
@@ -47,7 +48,7 @@
     .summarySection {
         display: flex;
         width: 75%;
-        height: 350px;
+        height: 250px;
         margin: 0 auto;
         margin-top: 50px;
         border-bottom: #bcc0c6 solid 1px;
@@ -62,22 +63,22 @@
             width: 80%;
 
             .description {
-                height: 50%;
+                height: 100px;
                 border-bottom: black solid 1px;
                 line-height: 20px;
                 font-size: 12px;
             }
 
             .listBox {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                grid-gap: 20%;
                 height: 50%;
 
                 .logoList {
                     display: flex;
                     align-items: center;
-                    font-size: 12px;
+                    font-size: 0.8vw;
                 }
             }
         }
@@ -106,10 +107,7 @@
 
         article {
             display: flex;
-
-            .emptyBox {
-                width: 20%;
-            }
+            padding-left: 8rem;
 
             .flatformBody {
                 width: 100%;
@@ -126,6 +124,7 @@
                 }
 
                 .historyBox {
+                    padding-left: 10px;
                     margin-top: 50px;
                     ul {
                         margin-bottom: 0;
@@ -167,6 +166,122 @@
                             color: #ed3f37;
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@media (min-width: 320px) and (max-width: 720px) {
+    .service {
+        .slickContainer {
+            width: 100%;
+        }
+
+        .summarySection {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+
+            .mainTitle {
+                font-size: 4vw;
+            }
+
+            .descriptionBox {
+                width: 100%;
+
+                .description {
+                    font-size: 1vw;
+                }
+
+                .listBox {
+                    display: inline;
+                }
+            }
+        }
+
+        .serviceLists {
+            width: 100%;
+            margin: 0 auto;
+
+            .mainContainer {
+                display: flex;
+                flex-direction: column;
+
+                .serviceName {
+                    width: 75%;
+                    margin: auto;
+                    font-size: 4vw;
+                }
+            }
+
+            article {
+                padding-left: 40px;
+
+                h2,
+                span {
+                    padding-left: 10px;
+                }
+            }
+        }
+    }
+}
+
+@media (min-width: 720px) and (max-width: 1024px) {
+    .service {
+        .slickContainer {
+            width: 100%;
+        }
+
+        .summarySection {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+
+            .mainTitle {
+                width: auto;
+                font-size: 3vw;
+            }
+
+            .descriptionBox {
+                width: 100%;
+
+                .description {
+                    font-size: 1vw;
+                }
+
+                .listBox {
+                    display: flex;
+                    justify-content: space-between;
+                    grid-gap: 0px;
+                    height: auto;
+                }
+            }
+        }
+
+        .serviceLists {
+            width: 100%;
+            margin: 0 auto;
+
+            .mainContainer {
+                display: flex;
+                flex-direction: column;
+
+                .serviceName {
+                    width: 75%;
+                    margin: auto;
+                    font-size: 3vw;
+                }
+            }
+
+            article {
+                width: 75%;
+                margin: auto;
+                padding: 0;
+
+                h2,
+                span {
+                    padding-left: 10px;
                 }
             }
         }

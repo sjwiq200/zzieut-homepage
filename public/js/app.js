@@ -36429,42 +36429,23 @@ module.exports = cloneDeep;
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-/* WEBPACK VAR INJECTION */(function(process) {
 
-module.exports = LRUCache
-
-// This will be a proper iterable 'Map' in engines that support it,
-// or a fakey-fake PseudoMap in older versions.
-var Map = __webpack_require__(/*! pseudomap */ "./node_modules/pseudomap/map.js")
-var util = __webpack_require__(/*! util */ "./node_modules/util/util.js")
 
 // A linked list to keep track of recently-used-ness
-var Yallist = __webpack_require__(/*! yallist */ "./node_modules/yallist/yallist.js")
+const Yallist = __webpack_require__(/*! yallist */ "./node_modules/lru-cache/node_modules/yallist/yallist.js")
 
-// use symbols if possible, otherwise just _props
-var hasSymbol = typeof Symbol === 'function' && process.env._nodeLRUCacheForceNoSymbol !== '1'
-var makeSymbol
-if (hasSymbol) {
-  makeSymbol = function (key) {
-    return Symbol(key)
-  }
-} else {
-  makeSymbol = function (key) {
-    return '_' + key
-  }
-}
+const MAX = Symbol('max')
+const LENGTH = Symbol('length')
+const LENGTH_CALCULATOR = Symbol('lengthCalculator')
+const ALLOW_STALE = Symbol('allowStale')
+const MAX_AGE = Symbol('maxAge')
+const DISPOSE = Symbol('dispose')
+const NO_DISPOSE_ON_SET = Symbol('noDisposeOnSet')
+const LRU_LIST = Symbol('lruList')
+const CACHE = Symbol('cache')
+const UPDATE_AGE_ON_GET = Symbol('updateAgeOnGet')
 
-var MAX = makeSymbol('max')
-var LENGTH = makeSymbol('length')
-var LENGTH_CALCULATOR = makeSymbol('lengthCalculator')
-var ALLOW_STALE = makeSymbol('allowStale')
-var MAX_AGE = makeSymbol('maxAge')
-var DISPOSE = makeSymbol('dispose')
-var NO_DISPOSE_ON_SET = makeSymbol('noDisposeOnSet')
-var LRU_LIST = makeSymbol('lruList')
-var CACHE = makeSymbol('cache')
-
-function naiveLength () { return 1 }
+const naiveLength = () => 1
 
 // lruList is a yallist where the head is the youngest
 // item, and the tail is the oldest.  the list contains the Hit
@@ -36474,431 +36455,773 @@ function naiveLength () { return 1 }
 //
 // cache is a Map (or PseudoMap) that matches the keys to
 // the Yallist.Node object.
-function LRUCache (options) {
-  if (!(this instanceof LRUCache)) {
-    return new LRUCache(options)
+class LRUCache {
+  constructor (options) {
+    if (typeof options === 'number')
+      options = { max: options }
+
+    if (!options)
+      options = {}
+
+    if (options.max && (typeof options.max !== 'number' || options.max < 0))
+      throw new TypeError('max must be a non-negative number')
+    // Kind of weird to have a default max of Infinity, but oh well.
+    const max = this[MAX] = options.max || Infinity
+
+    const lc = options.length || naiveLength
+    this[LENGTH_CALCULATOR] = (typeof lc !== 'function') ? naiveLength : lc
+    this[ALLOW_STALE] = options.stale || false
+    if (options.maxAge && typeof options.maxAge !== 'number')
+      throw new TypeError('maxAge must be a number')
+    this[MAX_AGE] = options.maxAge || 0
+    this[DISPOSE] = options.dispose
+    this[NO_DISPOSE_ON_SET] = options.noDisposeOnSet || false
+    this[UPDATE_AGE_ON_GET] = options.updateAgeOnGet || false
+    this.reset()
   }
 
-  if (typeof options === 'number') {
-    options = { max: options }
-  }
+  // resize the cache when the max changes.
+  set max (mL) {
+    if (typeof mL !== 'number' || mL < 0)
+      throw new TypeError('max must be a non-negative number')
 
-  if (!options) {
-    options = {}
-  }
-
-  var max = this[MAX] = options.max
-  // Kind of weird to have a default max of Infinity, but oh well.
-  if (!max ||
-      !(typeof max === 'number') ||
-      max <= 0) {
-    this[MAX] = Infinity
-  }
-
-  var lc = options.length || naiveLength
-  if (typeof lc !== 'function') {
-    lc = naiveLength
-  }
-  this[LENGTH_CALCULATOR] = lc
-
-  this[ALLOW_STALE] = options.stale || false
-  this[MAX_AGE] = options.maxAge || 0
-  this[DISPOSE] = options.dispose
-  this[NO_DISPOSE_ON_SET] = options.noDisposeOnSet || false
-  this.reset()
-}
-
-// resize the cache when the max changes.
-Object.defineProperty(LRUCache.prototype, 'max', {
-  set: function (mL) {
-    if (!mL || !(typeof mL === 'number') || mL <= 0) {
-      mL = Infinity
-    }
-    this[MAX] = mL
+    this[MAX] = mL || Infinity
     trim(this)
-  },
-  get: function () {
+  }
+  get max () {
     return this[MAX]
-  },
-  enumerable: true
-})
+  }
 
-Object.defineProperty(LRUCache.prototype, 'allowStale', {
-  set: function (allowStale) {
+  set allowStale (allowStale) {
     this[ALLOW_STALE] = !!allowStale
-  },
-  get: function () {
+  }
+  get allowStale () {
     return this[ALLOW_STALE]
-  },
-  enumerable: true
-})
+  }
 
-Object.defineProperty(LRUCache.prototype, 'maxAge', {
-  set: function (mA) {
-    if (!mA || !(typeof mA === 'number') || mA < 0) {
-      mA = 0
-    }
+  set maxAge (mA) {
+    if (typeof mA !== 'number')
+      throw new TypeError('maxAge must be a non-negative number')
+
     this[MAX_AGE] = mA
     trim(this)
-  },
-  get: function () {
+  }
+  get maxAge () {
     return this[MAX_AGE]
-  },
-  enumerable: true
-})
+  }
 
-// resize the cache when the lengthCalculator changes.
-Object.defineProperty(LRUCache.prototype, 'lengthCalculator', {
-  set: function (lC) {
-    if (typeof lC !== 'function') {
+  // resize the cache when the lengthCalculator changes.
+  set lengthCalculator (lC) {
+    if (typeof lC !== 'function')
       lC = naiveLength
-    }
+
     if (lC !== this[LENGTH_CALCULATOR]) {
       this[LENGTH_CALCULATOR] = lC
       this[LENGTH] = 0
-      this[LRU_LIST].forEach(function (hit) {
+      this[LRU_LIST].forEach(hit => {
         hit.length = this[LENGTH_CALCULATOR](hit.value, hit.key)
         this[LENGTH] += hit.length
-      }, this)
+      })
     }
     trim(this)
-  },
-  get: function () { return this[LENGTH_CALCULATOR] },
-  enumerable: true
-})
-
-Object.defineProperty(LRUCache.prototype, 'length', {
-  get: function () { return this[LENGTH] },
-  enumerable: true
-})
-
-Object.defineProperty(LRUCache.prototype, 'itemCount', {
-  get: function () { return this[LRU_LIST].length },
-  enumerable: true
-})
-
-LRUCache.prototype.rforEach = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this[LRU_LIST].tail; walker !== null;) {
-    var prev = walker.prev
-    forEachStep(this, fn, walker, thisp)
-    walker = prev
   }
-}
+  get lengthCalculator () { return this[LENGTH_CALCULATOR] }
 
-function forEachStep (self, fn, node, thisp) {
-  var hit = node.value
-  if (isStale(self, hit)) {
-    del(self, node)
-    if (!self[ALLOW_STALE]) {
-      hit = undefined
+  get length () { return this[LENGTH] }
+  get itemCount () { return this[LRU_LIST].length }
+
+  rforEach (fn, thisp) {
+    thisp = thisp || this
+    for (let walker = this[LRU_LIST].tail; walker !== null;) {
+      const prev = walker.prev
+      forEachStep(this, fn, walker, thisp)
+      walker = prev
     }
   }
-  if (hit) {
-    fn.call(thisp, hit.value, hit.key, self)
-  }
-}
 
-LRUCache.prototype.forEach = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this[LRU_LIST].head; walker !== null;) {
-    var next = walker.next
-    forEachStep(this, fn, walker, thisp)
-    walker = next
-  }
-}
-
-LRUCache.prototype.keys = function () {
-  return this[LRU_LIST].toArray().map(function (k) {
-    return k.key
-  }, this)
-}
-
-LRUCache.prototype.values = function () {
-  return this[LRU_LIST].toArray().map(function (k) {
-    return k.value
-  }, this)
-}
-
-LRUCache.prototype.reset = function () {
-  if (this[DISPOSE] &&
-      this[LRU_LIST] &&
-      this[LRU_LIST].length) {
-    this[LRU_LIST].forEach(function (hit) {
-      this[DISPOSE](hit.key, hit.value)
-    }, this)
+  forEach (fn, thisp) {
+    thisp = thisp || this
+    for (let walker = this[LRU_LIST].head; walker !== null;) {
+      const next = walker.next
+      forEachStep(this, fn, walker, thisp)
+      walker = next
+    }
   }
 
-  this[CACHE] = new Map() // hash of items by key
-  this[LRU_LIST] = new Yallist() // list of items in order of use recency
-  this[LENGTH] = 0 // length of items in the list
-}
+  keys () {
+    return this[LRU_LIST].toArray().map(k => k.key)
+  }
 
-LRUCache.prototype.dump = function () {
-  return this[LRU_LIST].map(function (hit) {
-    if (!isStale(this, hit)) {
-      return {
+  values () {
+    return this[LRU_LIST].toArray().map(k => k.value)
+  }
+
+  reset () {
+    if (this[DISPOSE] &&
+        this[LRU_LIST] &&
+        this[LRU_LIST].length) {
+      this[LRU_LIST].forEach(hit => this[DISPOSE](hit.key, hit.value))
+    }
+
+    this[CACHE] = new Map() // hash of items by key
+    this[LRU_LIST] = new Yallist() // list of items in order of use recency
+    this[LENGTH] = 0 // length of items in the list
+  }
+
+  dump () {
+    return this[LRU_LIST].map(hit =>
+      isStale(this, hit) ? false : {
         k: hit.key,
         v: hit.value,
         e: hit.now + (hit.maxAge || 0)
+      }).toArray().filter(h => h)
+  }
+
+  dumpLru () {
+    return this[LRU_LIST]
+  }
+
+  set (key, value, maxAge) {
+    maxAge = maxAge || this[MAX_AGE]
+
+    if (maxAge && typeof maxAge !== 'number')
+      throw new TypeError('maxAge must be a number')
+
+    const now = maxAge ? Date.now() : 0
+    const len = this[LENGTH_CALCULATOR](value, key)
+
+    if (this[CACHE].has(key)) {
+      if (len > this[MAX]) {
+        del(this, this[CACHE].get(key))
+        return false
       }
-    }
-  }, this).toArray().filter(function (h) {
-    return h
-  })
-}
 
-LRUCache.prototype.dumpLru = function () {
-  return this[LRU_LIST]
-}
+      const node = this[CACHE].get(key)
+      const item = node.value
 
-/* istanbul ignore next */
-LRUCache.prototype.inspect = function (n, opts) {
-  var str = 'LRUCache {'
-  var extras = false
-
-  var as = this[ALLOW_STALE]
-  if (as) {
-    str += '\n  allowStale: true'
-    extras = true
-  }
-
-  var max = this[MAX]
-  if (max && max !== Infinity) {
-    if (extras) {
-      str += ','
-    }
-    str += '\n  max: ' + util.inspect(max, opts)
-    extras = true
-  }
-
-  var maxAge = this[MAX_AGE]
-  if (maxAge) {
-    if (extras) {
-      str += ','
-    }
-    str += '\n  maxAge: ' + util.inspect(maxAge, opts)
-    extras = true
-  }
-
-  var lc = this[LENGTH_CALCULATOR]
-  if (lc && lc !== naiveLength) {
-    if (extras) {
-      str += ','
-    }
-    str += '\n  length: ' + util.inspect(this[LENGTH], opts)
-    extras = true
-  }
-
-  var didFirst = false
-  this[LRU_LIST].forEach(function (item) {
-    if (didFirst) {
-      str += ',\n  '
-    } else {
-      if (extras) {
-        str += ',\n'
+      // dispose of the old one before overwriting
+      // split out into 2 ifs for better coverage tracking
+      if (this[DISPOSE]) {
+        if (!this[NO_DISPOSE_ON_SET])
+          this[DISPOSE](key, item.value)
       }
-      didFirst = true
-      str += '\n  '
-    }
-    var key = util.inspect(item.key).split('\n').join('\n  ')
-    var val = { value: item.value }
-    if (item.maxAge !== maxAge) {
-      val.maxAge = item.maxAge
-    }
-    if (lc !== naiveLength) {
-      val.length = item.length
-    }
-    if (isStale(this, item)) {
-      val.stale = true
+
+      item.now = now
+      item.maxAge = maxAge
+      item.value = value
+      this[LENGTH] += len - item.length
+      item.length = len
+      this.get(key)
+      trim(this)
+      return true
     }
 
-    val = util.inspect(val, opts).split('\n').join('\n  ')
-    str += key + ' => ' + val
-  })
+    const hit = new Entry(key, value, len, now, maxAge)
 
-  if (didFirst || extras) {
-    str += '\n'
-  }
-  str += '}'
+    // oversized objects fall out of cache automatically.
+    if (hit.length > this[MAX]) {
+      if (this[DISPOSE])
+        this[DISPOSE](key, value)
 
-  return str
-}
-
-LRUCache.prototype.set = function (key, value, maxAge) {
-  maxAge = maxAge || this[MAX_AGE]
-
-  var now = maxAge ? Date.now() : 0
-  var len = this[LENGTH_CALCULATOR](value, key)
-
-  if (this[CACHE].has(key)) {
-    if (len > this[MAX]) {
-      del(this, this[CACHE].get(key))
       return false
     }
 
-    var node = this[CACHE].get(key)
-    var item = node.value
-
-    // dispose of the old one before overwriting
-    // split out into 2 ifs for better coverage tracking
-    if (this[DISPOSE]) {
-      if (!this[NO_DISPOSE_ON_SET]) {
-        this[DISPOSE](key, item.value)
-      }
-    }
-
-    item.now = now
-    item.maxAge = maxAge
-    item.value = value
-    this[LENGTH] += len - item.length
-    item.length = len
-    this.get(key)
+    this[LENGTH] += hit.length
+    this[LRU_LIST].unshift(hit)
+    this[CACHE].set(key, this[LRU_LIST].head)
     trim(this)
     return true
   }
 
-  var hit = new Entry(key, value, len, now, maxAge)
-
-  // oversized objects fall out of cache automatically.
-  if (hit.length > this[MAX]) {
-    if (this[DISPOSE]) {
-      this[DISPOSE](key, value)
-    }
-    return false
+  has (key) {
+    if (!this[CACHE].has(key)) return false
+    const hit = this[CACHE].get(key).value
+    return !isStale(this, hit)
   }
 
-  this[LENGTH] += hit.length
-  this[LRU_LIST].unshift(hit)
-  this[CACHE].set(key, this[LRU_LIST].head)
-  trim(this)
-  return true
-}
-
-LRUCache.prototype.has = function (key) {
-  if (!this[CACHE].has(key)) return false
-  var hit = this[CACHE].get(key).value
-  if (isStale(this, hit)) {
-    return false
+  get (key) {
+    return get(this, key, true)
   }
-  return true
-}
 
-LRUCache.prototype.get = function (key) {
-  return get(this, key, true)
-}
+  peek (key) {
+    return get(this, key, false)
+  }
 
-LRUCache.prototype.peek = function (key) {
-  return get(this, key, false)
-}
+  pop () {
+    const node = this[LRU_LIST].tail
+    if (!node)
+      return null
 
-LRUCache.prototype.pop = function () {
-  var node = this[LRU_LIST].tail
-  if (!node) return null
-  del(this, node)
-  return node.value
-}
+    del(this, node)
+    return node.value
+  }
 
-LRUCache.prototype.del = function (key) {
-  del(this, this[CACHE].get(key))
-}
+  del (key) {
+    del(this, this[CACHE].get(key))
+  }
 
-LRUCache.prototype.load = function (arr) {
-  // reset the cache
-  this.reset()
+  load (arr) {
+    // reset the cache
+    this.reset()
 
-  var now = Date.now()
-  // A previous serialized cache has the most recent items first
-  for (var l = arr.length - 1; l >= 0; l--) {
-    var hit = arr[l]
-    var expiresAt = hit.e || 0
-    if (expiresAt === 0) {
-      // the item was created without expiration in a non aged cache
-      this.set(hit.k, hit.v)
-    } else {
-      var maxAge = expiresAt - now
-      // dont add already expired items
-      if (maxAge > 0) {
-        this.set(hit.k, hit.v, maxAge)
+    const now = Date.now()
+    // A previous serialized cache has the most recent items first
+    for (let l = arr.length - 1; l >= 0; l--) {
+      const hit = arr[l]
+      const expiresAt = hit.e || 0
+      if (expiresAt === 0)
+        // the item was created without expiration in a non aged cache
+        this.set(hit.k, hit.v)
+      else {
+        const maxAge = expiresAt - now
+        // dont add already expired items
+        if (maxAge > 0) {
+          this.set(hit.k, hit.v, maxAge)
+        }
       }
     }
   }
+
+  prune () {
+    this[CACHE].forEach((value, key) => get(this, key, false))
+  }
 }
 
-LRUCache.prototype.prune = function () {
-  var self = this
-  this[CACHE].forEach(function (value, key) {
-    get(self, key, false)
-  })
-}
-
-function get (self, key, doUse) {
-  var node = self[CACHE].get(key)
+const get = (self, key, doUse) => {
+  const node = self[CACHE].get(key)
   if (node) {
-    var hit = node.value
+    const hit = node.value
     if (isStale(self, hit)) {
       del(self, node)
-      if (!self[ALLOW_STALE]) hit = undefined
+      if (!self[ALLOW_STALE])
+        return undefined
     } else {
       if (doUse) {
+        if (self[UPDATE_AGE_ON_GET])
+          node.value.now = Date.now()
         self[LRU_LIST].unshiftNode(node)
       }
     }
-    if (hit) hit = hit.value
+    return hit.value
   }
-  return hit
 }
 
-function isStale (self, hit) {
-  if (!hit || (!hit.maxAge && !self[MAX_AGE])) {
+const isStale = (self, hit) => {
+  if (!hit || (!hit.maxAge && !self[MAX_AGE]))
     return false
-  }
-  var stale = false
-  var diff = Date.now() - hit.now
-  if (hit.maxAge) {
-    stale = diff > hit.maxAge
-  } else {
-    stale = self[MAX_AGE] && (diff > self[MAX_AGE])
-  }
-  return stale
+
+  const diff = Date.now() - hit.now
+  return hit.maxAge ? diff > hit.maxAge
+    : self[MAX_AGE] && (diff > self[MAX_AGE])
 }
 
-function trim (self) {
+const trim = self => {
   if (self[LENGTH] > self[MAX]) {
-    for (var walker = self[LRU_LIST].tail;
+    for (let walker = self[LRU_LIST].tail;
       self[LENGTH] > self[MAX] && walker !== null;) {
       // We know that we're about to delete this one, and also
       // what the next least recently used key will be, so just
       // go ahead and set it now.
-      var prev = walker.prev
+      const prev = walker.prev
       del(self, walker)
       walker = prev
     }
   }
 }
 
-function del (self, node) {
+const del = (self, node) => {
   if (node) {
-    var hit = node.value
-    if (self[DISPOSE]) {
+    const hit = node.value
+    if (self[DISPOSE])
       self[DISPOSE](hit.key, hit.value)
-    }
+
     self[LENGTH] -= hit.length
     self[CACHE].delete(hit.key)
     self[LRU_LIST].removeNode(node)
   }
 }
 
-// classy, since V8 prefers predictable objects.
-function Entry (key, value, length, now, maxAge) {
-  this.key = key
-  this.value = value
-  this.length = length
-  this.now = now
-  this.maxAge = maxAge || 0
+class Entry {
+  constructor (key, value, length, now, maxAge) {
+    this.key = key
+    this.value = value
+    this.length = length
+    this.now = now
+    this.maxAge = maxAge || 0
+  }
 }
 
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ "./node_modules/process/browser.js")))
+const forEachStep = (self, fn, node, thisp) => {
+  let hit = node.value
+  if (isStale(self, hit)) {
+    del(self, node)
+    if (!self[ALLOW_STALE])
+      hit = undefined
+  }
+  if (hit)
+    fn.call(thisp, hit.value, hit.key, self)
+}
+
+module.exports = LRUCache
+
+
+/***/ }),
+
+/***/ "./node_modules/lru-cache/node_modules/yallist/iterator.js":
+/*!*****************************************************************!*\
+  !*** ./node_modules/lru-cache/node_modules/yallist/iterator.js ***!
+  \*****************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+module.exports = function (Yallist) {
+  Yallist.prototype[Symbol.iterator] = function* () {
+    for (let walker = this.head; walker; walker = walker.next) {
+      yield walker.value
+    }
+  }
+}
+
+
+/***/ }),
+
+/***/ "./node_modules/lru-cache/node_modules/yallist/yallist.js":
+/*!****************************************************************!*\
+  !*** ./node_modules/lru-cache/node_modules/yallist/yallist.js ***!
+  \****************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+module.exports = Yallist
+
+Yallist.Node = Node
+Yallist.create = Yallist
+
+function Yallist (list) {
+  var self = this
+  if (!(self instanceof Yallist)) {
+    self = new Yallist()
+  }
+
+  self.tail = null
+  self.head = null
+  self.length = 0
+
+  if (list && typeof list.forEach === 'function') {
+    list.forEach(function (item) {
+      self.push(item)
+    })
+  } else if (arguments.length > 0) {
+    for (var i = 0, l = arguments.length; i < l; i++) {
+      self.push(arguments[i])
+    }
+  }
+
+  return self
+}
+
+Yallist.prototype.removeNode = function (node) {
+  if (node.list !== this) {
+    throw new Error('removing node which does not belong to this list')
+  }
+
+  var next = node.next
+  var prev = node.prev
+
+  if (next) {
+    next.prev = prev
+  }
+
+  if (prev) {
+    prev.next = next
+  }
+
+  if (node === this.head) {
+    this.head = next
+  }
+  if (node === this.tail) {
+    this.tail = prev
+  }
+
+  node.list.length--
+  node.next = null
+  node.prev = null
+  node.list = null
+
+  return next
+}
+
+Yallist.prototype.unshiftNode = function (node) {
+  if (node === this.head) {
+    return
+  }
+
+  if (node.list) {
+    node.list.removeNode(node)
+  }
+
+  var head = this.head
+  node.list = this
+  node.next = head
+  if (head) {
+    head.prev = node
+  }
+
+  this.head = node
+  if (!this.tail) {
+    this.tail = node
+  }
+  this.length++
+}
+
+Yallist.prototype.pushNode = function (node) {
+  if (node === this.tail) {
+    return
+  }
+
+  if (node.list) {
+    node.list.removeNode(node)
+  }
+
+  var tail = this.tail
+  node.list = this
+  node.prev = tail
+  if (tail) {
+    tail.next = node
+  }
+
+  this.tail = node
+  if (!this.head) {
+    this.head = node
+  }
+  this.length++
+}
+
+Yallist.prototype.push = function () {
+  for (var i = 0, l = arguments.length; i < l; i++) {
+    push(this, arguments[i])
+  }
+  return this.length
+}
+
+Yallist.prototype.unshift = function () {
+  for (var i = 0, l = arguments.length; i < l; i++) {
+    unshift(this, arguments[i])
+  }
+  return this.length
+}
+
+Yallist.prototype.pop = function () {
+  if (!this.tail) {
+    return undefined
+  }
+
+  var res = this.tail.value
+  this.tail = this.tail.prev
+  if (this.tail) {
+    this.tail.next = null
+  } else {
+    this.head = null
+  }
+  this.length--
+  return res
+}
+
+Yallist.prototype.shift = function () {
+  if (!this.head) {
+    return undefined
+  }
+
+  var res = this.head.value
+  this.head = this.head.next
+  if (this.head) {
+    this.head.prev = null
+  } else {
+    this.tail = null
+  }
+  this.length--
+  return res
+}
+
+Yallist.prototype.forEach = function (fn, thisp) {
+  thisp = thisp || this
+  for (var walker = this.head, i = 0; walker !== null; i++) {
+    fn.call(thisp, walker.value, i, this)
+    walker = walker.next
+  }
+}
+
+Yallist.prototype.forEachReverse = function (fn, thisp) {
+  thisp = thisp || this
+  for (var walker = this.tail, i = this.length - 1; walker !== null; i--) {
+    fn.call(thisp, walker.value, i, this)
+    walker = walker.prev
+  }
+}
+
+Yallist.prototype.get = function (n) {
+  for (var i = 0, walker = this.head; walker !== null && i < n; i++) {
+    // abort out of the list early if we hit a cycle
+    walker = walker.next
+  }
+  if (i === n && walker !== null) {
+    return walker.value
+  }
+}
+
+Yallist.prototype.getReverse = function (n) {
+  for (var i = 0, walker = this.tail; walker !== null && i < n; i++) {
+    // abort out of the list early if we hit a cycle
+    walker = walker.prev
+  }
+  if (i === n && walker !== null) {
+    return walker.value
+  }
+}
+
+Yallist.prototype.map = function (fn, thisp) {
+  thisp = thisp || this
+  var res = new Yallist()
+  for (var walker = this.head; walker !== null;) {
+    res.push(fn.call(thisp, walker.value, this))
+    walker = walker.next
+  }
+  return res
+}
+
+Yallist.prototype.mapReverse = function (fn, thisp) {
+  thisp = thisp || this
+  var res = new Yallist()
+  for (var walker = this.tail; walker !== null;) {
+    res.push(fn.call(thisp, walker.value, this))
+    walker = walker.prev
+  }
+  return res
+}
+
+Yallist.prototype.reduce = function (fn, initial) {
+  var acc
+  var walker = this.head
+  if (arguments.length > 1) {
+    acc = initial
+  } else if (this.head) {
+    walker = this.head.next
+    acc = this.head.value
+  } else {
+    throw new TypeError('Reduce of empty list with no initial value')
+  }
+
+  for (var i = 0; walker !== null; i++) {
+    acc = fn(acc, walker.value, i)
+    walker = walker.next
+  }
+
+  return acc
+}
+
+Yallist.prototype.reduceReverse = function (fn, initial) {
+  var acc
+  var walker = this.tail
+  if (arguments.length > 1) {
+    acc = initial
+  } else if (this.tail) {
+    walker = this.tail.prev
+    acc = this.tail.value
+  } else {
+    throw new TypeError('Reduce of empty list with no initial value')
+  }
+
+  for (var i = this.length - 1; walker !== null; i--) {
+    acc = fn(acc, walker.value, i)
+    walker = walker.prev
+  }
+
+  return acc
+}
+
+Yallist.prototype.toArray = function () {
+  var arr = new Array(this.length)
+  for (var i = 0, walker = this.head; walker !== null; i++) {
+    arr[i] = walker.value
+    walker = walker.next
+  }
+  return arr
+}
+
+Yallist.prototype.toArrayReverse = function () {
+  var arr = new Array(this.length)
+  for (var i = 0, walker = this.tail; walker !== null; i++) {
+    arr[i] = walker.value
+    walker = walker.prev
+  }
+  return arr
+}
+
+Yallist.prototype.slice = function (from, to) {
+  to = to || this.length
+  if (to < 0) {
+    to += this.length
+  }
+  from = from || 0
+  if (from < 0) {
+    from += this.length
+  }
+  var ret = new Yallist()
+  if (to < from || to < 0) {
+    return ret
+  }
+  if (from < 0) {
+    from = 0
+  }
+  if (to > this.length) {
+    to = this.length
+  }
+  for (var i = 0, walker = this.head; walker !== null && i < from; i++) {
+    walker = walker.next
+  }
+  for (; walker !== null && i < to; i++, walker = walker.next) {
+    ret.push(walker.value)
+  }
+  return ret
+}
+
+Yallist.prototype.sliceReverse = function (from, to) {
+  to = to || this.length
+  if (to < 0) {
+    to += this.length
+  }
+  from = from || 0
+  if (from < 0) {
+    from += this.length
+  }
+  var ret = new Yallist()
+  if (to < from || to < 0) {
+    return ret
+  }
+  if (from < 0) {
+    from = 0
+  }
+  if (to > this.length) {
+    to = this.length
+  }
+  for (var i = this.length, walker = this.tail; walker !== null && i > to; i--) {
+    walker = walker.prev
+  }
+  for (; walker !== null && i > from; i--, walker = walker.prev) {
+    ret.push(walker.value)
+  }
+  return ret
+}
+
+Yallist.prototype.splice = function (start, deleteCount /*, ...nodes */) {
+  if (start > this.length) {
+    start = this.length - 1
+  }
+  if (start < 0) {
+    start = this.length + start;
+  }
+
+  for (var i = 0, walker = this.head; walker !== null && i < start; i++) {
+    walker = walker.next
+  }
+
+  var ret = []
+  for (var i = 0; walker && i < deleteCount; i++) {
+    ret.push(walker.value)
+    walker = this.removeNode(walker)
+  }
+  if (walker === null) {
+    walker = this.tail
+  }
+
+  if (walker !== this.head && walker !== this.tail) {
+    walker = walker.prev
+  }
+
+  for (var i = 2; i < arguments.length; i++) {
+    walker = insert(this, walker, arguments[i])
+  }
+  return ret;
+}
+
+Yallist.prototype.reverse = function () {
+  var head = this.head
+  var tail = this.tail
+  for (var walker = head; walker !== null; walker = walker.prev) {
+    var p = walker.prev
+    walker.prev = walker.next
+    walker.next = p
+  }
+  this.head = tail
+  this.tail = head
+  return this
+}
+
+function insert (self, node, value) {
+  var inserted = node === self.head ?
+    new Node(value, null, node, self) :
+    new Node(value, node, node.next, self)
+
+  if (inserted.next === null) {
+    self.tail = inserted
+  }
+  if (inserted.prev === null) {
+    self.head = inserted
+  }
+
+  self.length++
+
+  return inserted
+}
+
+function push (self, item) {
+  self.tail = new Node(item, self.tail, null, self)
+  if (!self.head) {
+    self.head = self.tail
+  }
+  self.length++
+}
+
+function unshift (self, item) {
+  self.head = new Node(item, null, self.head, self)
+  if (!self.tail) {
+    self.tail = self.head
+  }
+  self.length++
+}
+
+function Node (value, prev, next, list) {
+  if (!(this instanceof Node)) {
+    return new Node(value, prev, next, list)
+  }
+
+  this.list = list
+  this.value = value
+
+  if (prev) {
+    prev.next = this
+    this.prev = prev
+  } else {
+    this.prev = null
+  }
+
+  if (next) {
+    next.prev = this
+    this.next = next
+  } else {
+    this.next = null
+  }
+}
+
+try {
+  // add if support for Symbol.iterator is present
+  __webpack_require__(/*! ./iterator.js */ "./node_modules/lru-cache/node_modules/yallist/iterator.js")(Yallist)
+} catch (er) {}
+
 
 /***/ }),
 
@@ -39727,151 +40050,6 @@ process.umask = function() { return 0; };
 
 /***/ }),
 
-/***/ "./node_modules/pseudomap/map.js":
-/*!***************************************!*\
-  !*** ./node_modules/pseudomap/map.js ***!
-  \***************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(process) {if (process.env.npm_package_name === 'pseudomap' &&
-    process.env.npm_lifecycle_script === 'test')
-  process.env.TEST_PSEUDOMAP = 'true'
-
-if (typeof Map === 'function' && !process.env.TEST_PSEUDOMAP) {
-  module.exports = Map
-} else {
-  module.exports = __webpack_require__(/*! ./pseudomap */ "./node_modules/pseudomap/pseudomap.js")
-}
-
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ "./node_modules/process/browser.js")))
-
-/***/ }),
-
-/***/ "./node_modules/pseudomap/pseudomap.js":
-/*!*********************************************!*\
-  !*** ./node_modules/pseudomap/pseudomap.js ***!
-  \*********************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-var hasOwnProperty = Object.prototype.hasOwnProperty
-
-module.exports = PseudoMap
-
-function PseudoMap (set) {
-  if (!(this instanceof PseudoMap)) // whyyyyyyy
-    throw new TypeError("Constructor PseudoMap requires 'new'")
-
-  this.clear()
-
-  if (set) {
-    if ((set instanceof PseudoMap) ||
-        (typeof Map === 'function' && set instanceof Map))
-      set.forEach(function (value, key) {
-        this.set(key, value)
-      }, this)
-    else if (Array.isArray(set))
-      set.forEach(function (kv) {
-        this.set(kv[0], kv[1])
-      }, this)
-    else
-      throw new TypeError('invalid argument')
-  }
-}
-
-PseudoMap.prototype.forEach = function (fn, thisp) {
-  thisp = thisp || this
-  Object.keys(this._data).forEach(function (k) {
-    if (k !== 'size')
-      fn.call(thisp, this._data[k].value, this._data[k].key)
-  }, this)
-}
-
-PseudoMap.prototype.has = function (k) {
-  return !!find(this._data, k)
-}
-
-PseudoMap.prototype.get = function (k) {
-  var res = find(this._data, k)
-  return res && res.value
-}
-
-PseudoMap.prototype.set = function (k, v) {
-  set(this._data, k, v)
-}
-
-PseudoMap.prototype.delete = function (k) {
-  var res = find(this._data, k)
-  if (res) {
-    delete this._data[res._index]
-    this._data.size--
-  }
-}
-
-PseudoMap.prototype.clear = function () {
-  var data = Object.create(null)
-  data.size = 0
-
-  Object.defineProperty(this, '_data', {
-    value: data,
-    enumerable: false,
-    configurable: true,
-    writable: false
-  })
-}
-
-Object.defineProperty(PseudoMap.prototype, 'size', {
-  get: function () {
-    return this._data.size
-  },
-  set: function (n) {},
-  enumerable: true,
-  configurable: true
-})
-
-PseudoMap.prototype.values =
-PseudoMap.prototype.keys =
-PseudoMap.prototype.entries = function () {
-  throw new Error('iterators are not implemented in this version')
-}
-
-// Either identical, or both NaN
-function same (a, b) {
-  return a === b || a !== a && b !== b
-}
-
-function Entry (k, v, i) {
-  this.key = k
-  this.value = v
-  this._index = i
-}
-
-function find (data, k) {
-  for (var i = 0, s = '_' + k, key = s;
-       hasOwnProperty.call(data, key);
-       key = s + i++) {
-    if (same(data[key].key, k))
-      return data[key]
-  }
-}
-
-function set (data, k, v) {
-  for (var i = 0, s = '_' + k, key = s;
-       hasOwnProperty.call(data, key);
-       key = s + i++) {
-    if (same(data[key].key, k)) {
-      data[key].value = v
-      return
-    }
-  }
-  data.size++
-  data[key] = new Entry(k, v, key)
-}
-
-
-/***/ }),
-
 /***/ "./node_modules/regenerator-runtime/runtime.js":
 /*!*****************************************************!*\
   !*** ./node_modules/regenerator-runtime/runtime.js ***!
@@ -41103,771 +41281,6 @@ exports.clearImmediate = (typeof self !== "undefined" && self.clearImmediate) ||
 
 /***/ }),
 
-/***/ "./node_modules/util/node_modules/inherits/inherits_browser.js":
-/*!*********************************************************************!*\
-  !*** ./node_modules/util/node_modules/inherits/inherits_browser.js ***!
-  \*********************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
-}
-
-
-/***/ }),
-
-/***/ "./node_modules/util/support/isBufferBrowser.js":
-/*!******************************************************!*\
-  !*** ./node_modules/util/support/isBufferBrowser.js ***!
-  \******************************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-module.exports = function isBuffer(arg) {
-  return arg && typeof arg === 'object'
-    && typeof arg.copy === 'function'
-    && typeof arg.fill === 'function'
-    && typeof arg.readUInt8 === 'function';
-}
-
-/***/ }),
-
-/***/ "./node_modules/util/util.js":
-/*!***********************************!*\
-  !*** ./node_modules/util/util.js ***!
-  \***********************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-/* WEBPACK VAR INJECTION */(function(process) {// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-var getOwnPropertyDescriptors = Object.getOwnPropertyDescriptors ||
-  function getOwnPropertyDescriptors(obj) {
-    var keys = Object.keys(obj);
-    var descriptors = {};
-    for (var i = 0; i < keys.length; i++) {
-      descriptors[keys[i]] = Object.getOwnPropertyDescriptor(obj, keys[i]);
-    }
-    return descriptors;
-  };
-
-var formatRegExp = /%[sdj%]/g;
-exports.format = function(f) {
-  if (!isString(f)) {
-    var objects = [];
-    for (var i = 0; i < arguments.length; i++) {
-      objects.push(inspect(arguments[i]));
-    }
-    return objects.join(' ');
-  }
-
-  var i = 1;
-  var args = arguments;
-  var len = args.length;
-  var str = String(f).replace(formatRegExp, function(x) {
-    if (x === '%%') return '%';
-    if (i >= len) return x;
-    switch (x) {
-      case '%s': return String(args[i++]);
-      case '%d': return Number(args[i++]);
-      case '%j':
-        try {
-          return JSON.stringify(args[i++]);
-        } catch (_) {
-          return '[Circular]';
-        }
-      default:
-        return x;
-    }
-  });
-  for (var x = args[i]; i < len; x = args[++i]) {
-    if (isNull(x) || !isObject(x)) {
-      str += ' ' + x;
-    } else {
-      str += ' ' + inspect(x);
-    }
-  }
-  return str;
-};
-
-
-// Mark that a method should not be used.
-// Returns a modified function which warns once by default.
-// If --no-deprecation is set, then it is a no-op.
-exports.deprecate = function(fn, msg) {
-  if (typeof process !== 'undefined' && process.noDeprecation === true) {
-    return fn;
-  }
-
-  // Allow for deprecating things in the process of starting up.
-  if (typeof process === 'undefined') {
-    return function() {
-      return exports.deprecate(fn, msg).apply(this, arguments);
-    };
-  }
-
-  var warned = false;
-  function deprecated() {
-    if (!warned) {
-      if (process.throwDeprecation) {
-        throw new Error(msg);
-      } else if (process.traceDeprecation) {
-        console.trace(msg);
-      } else {
-        console.error(msg);
-      }
-      warned = true;
-    }
-    return fn.apply(this, arguments);
-  }
-
-  return deprecated;
-};
-
-
-var debugs = {};
-var debugEnviron;
-exports.debuglog = function(set) {
-  if (isUndefined(debugEnviron))
-    debugEnviron = process.env.NODE_DEBUG || '';
-  set = set.toUpperCase();
-  if (!debugs[set]) {
-    if (new RegExp('\\b' + set + '\\b', 'i').test(debugEnviron)) {
-      var pid = process.pid;
-      debugs[set] = function() {
-        var msg = exports.format.apply(exports, arguments);
-        console.error('%s %d: %s', set, pid, msg);
-      };
-    } else {
-      debugs[set] = function() {};
-    }
-  }
-  return debugs[set];
-};
-
-
-/**
- * Echos the value of a value. Trys to print the value out
- * in the best way possible given the different types.
- *
- * @param {Object} obj The object to print out.
- * @param {Object} opts Optional options object that alters the output.
- */
-/* legacy: obj, showHidden, depth, colors*/
-function inspect(obj, opts) {
-  // default options
-  var ctx = {
-    seen: [],
-    stylize: stylizeNoColor
-  };
-  // legacy...
-  if (arguments.length >= 3) ctx.depth = arguments[2];
-  if (arguments.length >= 4) ctx.colors = arguments[3];
-  if (isBoolean(opts)) {
-    // legacy...
-    ctx.showHidden = opts;
-  } else if (opts) {
-    // got an "options" object
-    exports._extend(ctx, opts);
-  }
-  // set default options
-  if (isUndefined(ctx.showHidden)) ctx.showHidden = false;
-  if (isUndefined(ctx.depth)) ctx.depth = 2;
-  if (isUndefined(ctx.colors)) ctx.colors = false;
-  if (isUndefined(ctx.customInspect)) ctx.customInspect = true;
-  if (ctx.colors) ctx.stylize = stylizeWithColor;
-  return formatValue(ctx, obj, ctx.depth);
-}
-exports.inspect = inspect;
-
-
-// http://en.wikipedia.org/wiki/ANSI_escape_code#graphics
-inspect.colors = {
-  'bold' : [1, 22],
-  'italic' : [3, 23],
-  'underline' : [4, 24],
-  'inverse' : [7, 27],
-  'white' : [37, 39],
-  'grey' : [90, 39],
-  'black' : [30, 39],
-  'blue' : [34, 39],
-  'cyan' : [36, 39],
-  'green' : [32, 39],
-  'magenta' : [35, 39],
-  'red' : [31, 39],
-  'yellow' : [33, 39]
-};
-
-// Don't use 'blue' not visible on cmd.exe
-inspect.styles = {
-  'special': 'cyan',
-  'number': 'yellow',
-  'boolean': 'yellow',
-  'undefined': 'grey',
-  'null': 'bold',
-  'string': 'green',
-  'date': 'magenta',
-  // "name": intentionally not styling
-  'regexp': 'red'
-};
-
-
-function stylizeWithColor(str, styleType) {
-  var style = inspect.styles[styleType];
-
-  if (style) {
-    return '\u001b[' + inspect.colors[style][0] + 'm' + str +
-           '\u001b[' + inspect.colors[style][1] + 'm';
-  } else {
-    return str;
-  }
-}
-
-
-function stylizeNoColor(str, styleType) {
-  return str;
-}
-
-
-function arrayToHash(array) {
-  var hash = {};
-
-  array.forEach(function(val, idx) {
-    hash[val] = true;
-  });
-
-  return hash;
-}
-
-
-function formatValue(ctx, value, recurseTimes) {
-  // Provide a hook for user-specified inspect functions.
-  // Check that value is an object with an inspect function on it
-  if (ctx.customInspect &&
-      value &&
-      isFunction(value.inspect) &&
-      // Filter out the util module, it's inspect function is special
-      value.inspect !== exports.inspect &&
-      // Also filter out any prototype objects using the circular check.
-      !(value.constructor && value.constructor.prototype === value)) {
-    var ret = value.inspect(recurseTimes, ctx);
-    if (!isString(ret)) {
-      ret = formatValue(ctx, ret, recurseTimes);
-    }
-    return ret;
-  }
-
-  // Primitive types cannot have properties
-  var primitive = formatPrimitive(ctx, value);
-  if (primitive) {
-    return primitive;
-  }
-
-  // Look up the keys of the object.
-  var keys = Object.keys(value);
-  var visibleKeys = arrayToHash(keys);
-
-  if (ctx.showHidden) {
-    keys = Object.getOwnPropertyNames(value);
-  }
-
-  // IE doesn't make error fields non-enumerable
-  // http://msdn.microsoft.com/en-us/library/ie/dww52sbt(v=vs.94).aspx
-  if (isError(value)
-      && (keys.indexOf('message') >= 0 || keys.indexOf('description') >= 0)) {
-    return formatError(value);
-  }
-
-  // Some type of object without properties can be shortcutted.
-  if (keys.length === 0) {
-    if (isFunction(value)) {
-      var name = value.name ? ': ' + value.name : '';
-      return ctx.stylize('[Function' + name + ']', 'special');
-    }
-    if (isRegExp(value)) {
-      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
-    }
-    if (isDate(value)) {
-      return ctx.stylize(Date.prototype.toString.call(value), 'date');
-    }
-    if (isError(value)) {
-      return formatError(value);
-    }
-  }
-
-  var base = '', array = false, braces = ['{', '}'];
-
-  // Make Array say that they are Array
-  if (isArray(value)) {
-    array = true;
-    braces = ['[', ']'];
-  }
-
-  // Make functions say that they are functions
-  if (isFunction(value)) {
-    var n = value.name ? ': ' + value.name : '';
-    base = ' [Function' + n + ']';
-  }
-
-  // Make RegExps say that they are RegExps
-  if (isRegExp(value)) {
-    base = ' ' + RegExp.prototype.toString.call(value);
-  }
-
-  // Make dates with properties first say the date
-  if (isDate(value)) {
-    base = ' ' + Date.prototype.toUTCString.call(value);
-  }
-
-  // Make error with message first say the error
-  if (isError(value)) {
-    base = ' ' + formatError(value);
-  }
-
-  if (keys.length === 0 && (!array || value.length == 0)) {
-    return braces[0] + base + braces[1];
-  }
-
-  if (recurseTimes < 0) {
-    if (isRegExp(value)) {
-      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
-    } else {
-      return ctx.stylize('[Object]', 'special');
-    }
-  }
-
-  ctx.seen.push(value);
-
-  var output;
-  if (array) {
-    output = formatArray(ctx, value, recurseTimes, visibleKeys, keys);
-  } else {
-    output = keys.map(function(key) {
-      return formatProperty(ctx, value, recurseTimes, visibleKeys, key, array);
-    });
-  }
-
-  ctx.seen.pop();
-
-  return reduceToSingleString(output, base, braces);
-}
-
-
-function formatPrimitive(ctx, value) {
-  if (isUndefined(value))
-    return ctx.stylize('undefined', 'undefined');
-  if (isString(value)) {
-    var simple = '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
-                                             .replace(/'/g, "\\'")
-                                             .replace(/\\"/g, '"') + '\'';
-    return ctx.stylize(simple, 'string');
-  }
-  if (isNumber(value))
-    return ctx.stylize('' + value, 'number');
-  if (isBoolean(value))
-    return ctx.stylize('' + value, 'boolean');
-  // For some reason typeof null is "object", so special case here.
-  if (isNull(value))
-    return ctx.stylize('null', 'null');
-}
-
-
-function formatError(value) {
-  return '[' + Error.prototype.toString.call(value) + ']';
-}
-
-
-function formatArray(ctx, value, recurseTimes, visibleKeys, keys) {
-  var output = [];
-  for (var i = 0, l = value.length; i < l; ++i) {
-    if (hasOwnProperty(value, String(i))) {
-      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
-          String(i), true));
-    } else {
-      output.push('');
-    }
-  }
-  keys.forEach(function(key) {
-    if (!key.match(/^\d+$/)) {
-      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
-          key, true));
-    }
-  });
-  return output;
-}
-
-
-function formatProperty(ctx, value, recurseTimes, visibleKeys, key, array) {
-  var name, str, desc;
-  desc = Object.getOwnPropertyDescriptor(value, key) || { value: value[key] };
-  if (desc.get) {
-    if (desc.set) {
-      str = ctx.stylize('[Getter/Setter]', 'special');
-    } else {
-      str = ctx.stylize('[Getter]', 'special');
-    }
-  } else {
-    if (desc.set) {
-      str = ctx.stylize('[Setter]', 'special');
-    }
-  }
-  if (!hasOwnProperty(visibleKeys, key)) {
-    name = '[' + key + ']';
-  }
-  if (!str) {
-    if (ctx.seen.indexOf(desc.value) < 0) {
-      if (isNull(recurseTimes)) {
-        str = formatValue(ctx, desc.value, null);
-      } else {
-        str = formatValue(ctx, desc.value, recurseTimes - 1);
-      }
-      if (str.indexOf('\n') > -1) {
-        if (array) {
-          str = str.split('\n').map(function(line) {
-            return '  ' + line;
-          }).join('\n').substr(2);
-        } else {
-          str = '\n' + str.split('\n').map(function(line) {
-            return '   ' + line;
-          }).join('\n');
-        }
-      }
-    } else {
-      str = ctx.stylize('[Circular]', 'special');
-    }
-  }
-  if (isUndefined(name)) {
-    if (array && key.match(/^\d+$/)) {
-      return str;
-    }
-    name = JSON.stringify('' + key);
-    if (name.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
-      name = name.substr(1, name.length - 2);
-      name = ctx.stylize(name, 'name');
-    } else {
-      name = name.replace(/'/g, "\\'")
-                 .replace(/\\"/g, '"')
-                 .replace(/(^"|"$)/g, "'");
-      name = ctx.stylize(name, 'string');
-    }
-  }
-
-  return name + ': ' + str;
-}
-
-
-function reduceToSingleString(output, base, braces) {
-  var numLinesEst = 0;
-  var length = output.reduce(function(prev, cur) {
-    numLinesEst++;
-    if (cur.indexOf('\n') >= 0) numLinesEst++;
-    return prev + cur.replace(/\u001b\[\d\d?m/g, '').length + 1;
-  }, 0);
-
-  if (length > 60) {
-    return braces[0] +
-           (base === '' ? '' : base + '\n ') +
-           ' ' +
-           output.join(',\n  ') +
-           ' ' +
-           braces[1];
-  }
-
-  return braces[0] + base + ' ' + output.join(', ') + ' ' + braces[1];
-}
-
-
-// NOTE: These type checking functions intentionally don't use `instanceof`
-// because it is fragile and can be easily faked with `Object.create()`.
-function isArray(ar) {
-  return Array.isArray(ar);
-}
-exports.isArray = isArray;
-
-function isBoolean(arg) {
-  return typeof arg === 'boolean';
-}
-exports.isBoolean = isBoolean;
-
-function isNull(arg) {
-  return arg === null;
-}
-exports.isNull = isNull;
-
-function isNullOrUndefined(arg) {
-  return arg == null;
-}
-exports.isNullOrUndefined = isNullOrUndefined;
-
-function isNumber(arg) {
-  return typeof arg === 'number';
-}
-exports.isNumber = isNumber;
-
-function isString(arg) {
-  return typeof arg === 'string';
-}
-exports.isString = isString;
-
-function isSymbol(arg) {
-  return typeof arg === 'symbol';
-}
-exports.isSymbol = isSymbol;
-
-function isUndefined(arg) {
-  return arg === void 0;
-}
-exports.isUndefined = isUndefined;
-
-function isRegExp(re) {
-  return isObject(re) && objectToString(re) === '[object RegExp]';
-}
-exports.isRegExp = isRegExp;
-
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
-}
-exports.isObject = isObject;
-
-function isDate(d) {
-  return isObject(d) && objectToString(d) === '[object Date]';
-}
-exports.isDate = isDate;
-
-function isError(e) {
-  return isObject(e) &&
-      (objectToString(e) === '[object Error]' || e instanceof Error);
-}
-exports.isError = isError;
-
-function isFunction(arg) {
-  return typeof arg === 'function';
-}
-exports.isFunction = isFunction;
-
-function isPrimitive(arg) {
-  return arg === null ||
-         typeof arg === 'boolean' ||
-         typeof arg === 'number' ||
-         typeof arg === 'string' ||
-         typeof arg === 'symbol' ||  // ES6 symbol
-         typeof arg === 'undefined';
-}
-exports.isPrimitive = isPrimitive;
-
-exports.isBuffer = __webpack_require__(/*! ./support/isBuffer */ "./node_modules/util/support/isBufferBrowser.js");
-
-function objectToString(o) {
-  return Object.prototype.toString.call(o);
-}
-
-
-function pad(n) {
-  return n < 10 ? '0' + n.toString(10) : n.toString(10);
-}
-
-
-var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
-              'Oct', 'Nov', 'Dec'];
-
-// 26 Feb 16:19:34
-function timestamp() {
-  var d = new Date();
-  var time = [pad(d.getHours()),
-              pad(d.getMinutes()),
-              pad(d.getSeconds())].join(':');
-  return [d.getDate(), months[d.getMonth()], time].join(' ');
-}
-
-
-// log is just a thin wrapper to console.log that prepends a timestamp
-exports.log = function() {
-  console.log('%s - %s', timestamp(), exports.format.apply(exports, arguments));
-};
-
-
-/**
- * Inherit the prototype methods from one constructor into another.
- *
- * The Function.prototype.inherits from lang.js rewritten as a standalone
- * function (not on Function.prototype). NOTE: If this file is to be loaded
- * during bootstrapping this function needs to be rewritten using some native
- * functions as prototype setup using normal JavaScript does not work as
- * expected during bootstrapping (see mirror.js in r114903).
- *
- * @param {function} ctor Constructor function which needs to inherit the
- *     prototype.
- * @param {function} superCtor Constructor function to inherit prototype from.
- */
-exports.inherits = __webpack_require__(/*! inherits */ "./node_modules/util/node_modules/inherits/inherits_browser.js");
-
-exports._extend = function(origin, add) {
-  // Don't do anything if add isn't an object
-  if (!add || !isObject(add)) return origin;
-
-  var keys = Object.keys(add);
-  var i = keys.length;
-  while (i--) {
-    origin[keys[i]] = add[keys[i]];
-  }
-  return origin;
-};
-
-function hasOwnProperty(obj, prop) {
-  return Object.prototype.hasOwnProperty.call(obj, prop);
-}
-
-var kCustomPromisifiedSymbol = typeof Symbol !== 'undefined' ? Symbol('util.promisify.custom') : undefined;
-
-exports.promisify = function promisify(original) {
-  if (typeof original !== 'function')
-    throw new TypeError('The "original" argument must be of type Function');
-
-  if (kCustomPromisifiedSymbol && original[kCustomPromisifiedSymbol]) {
-    var fn = original[kCustomPromisifiedSymbol];
-    if (typeof fn !== 'function') {
-      throw new TypeError('The "util.promisify.custom" argument must be of type Function');
-    }
-    Object.defineProperty(fn, kCustomPromisifiedSymbol, {
-      value: fn, enumerable: false, writable: false, configurable: true
-    });
-    return fn;
-  }
-
-  function fn() {
-    var promiseResolve, promiseReject;
-    var promise = new Promise(function (resolve, reject) {
-      promiseResolve = resolve;
-      promiseReject = reject;
-    });
-
-    var args = [];
-    for (var i = 0; i < arguments.length; i++) {
-      args.push(arguments[i]);
-    }
-    args.push(function (err, value) {
-      if (err) {
-        promiseReject(err);
-      } else {
-        promiseResolve(value);
-      }
-    });
-
-    try {
-      original.apply(this, args);
-    } catch (err) {
-      promiseReject(err);
-    }
-
-    return promise;
-  }
-
-  Object.setPrototypeOf(fn, Object.getPrototypeOf(original));
-
-  if (kCustomPromisifiedSymbol) Object.defineProperty(fn, kCustomPromisifiedSymbol, {
-    value: fn, enumerable: false, writable: false, configurable: true
-  });
-  return Object.defineProperties(
-    fn,
-    getOwnPropertyDescriptors(original)
-  );
-}
-
-exports.promisify.custom = kCustomPromisifiedSymbol
-
-function callbackifyOnRejected(reason, cb) {
-  // `!reason` guard inspired by bluebird (Ref: https://goo.gl/t5IS6M).
-  // Because `null` is a special error value in callbacks which means "no error
-  // occurred", we error-wrap so the callback consumer can distinguish between
-  // "the promise rejected with null" or "the promise fulfilled with undefined".
-  if (!reason) {
-    var newReason = new Error('Promise was rejected with a falsy value');
-    newReason.reason = reason;
-    reason = newReason;
-  }
-  return cb(reason);
-}
-
-function callbackify(original) {
-  if (typeof original !== 'function') {
-    throw new TypeError('The "original" argument must be of type Function');
-  }
-
-  // We DO NOT return the promise as it gives the user a false sense that
-  // the promise is actually somehow related to the callback's execution
-  // and that the callback throwing will reject the promise.
-  function callbackified() {
-    var args = [];
-    for (var i = 0; i < arguments.length; i++) {
-      args.push(arguments[i]);
-    }
-
-    var maybeCb = args.pop();
-    if (typeof maybeCb !== 'function') {
-      throw new TypeError('The last argument must be of type Function');
-    }
-    var self = this;
-    var cb = function() {
-      return maybeCb.apply(self, arguments);
-    };
-    // In true node style we process the callback on `nextTick` with all the
-    // implications (stack, `uncaughtException`, `async_hooks`)
-    original.apply(this, args)
-      .then(function(ret) { process.nextTick(cb, null, ret) },
-            function(rej) { process.nextTick(callbackifyOnRejected, rej, cb) });
-  }
-
-  Object.setPrototypeOf(callbackified, Object.getPrototypeOf(original));
-  Object.defineProperties(callbackified,
-                          getOwnPropertyDescriptors(original));
-  return callbackified;
-}
-exports.callbackify = callbackify;
-
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../process/browser.js */ "./node_modules/process/browser.js")))
-
-/***/ }),
-
 /***/ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/App.vue?vue&type=template&id=f348271a&":
 /*!*******************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/App.vue?vue&type=template&id=f348271a& ***!
@@ -41945,10 +41358,10 @@ render._withStripped = true
 
 /***/ }),
 
-/***/ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec&":
-/*!************************************************************************************************************************************************************************************************************************!*\
-  !*** ./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec& ***!
-  \************************************************************************************************************************************************************************************************************************/
+/***/ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec&scoped=true&":
+/*!************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec&scoped=true& ***!
+  \************************************************************************************************************************************************************************************************************************************/
 /*! exports provided: render, staticRenderFns */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
@@ -41960,54 +41373,7 @@ var render = function() {
   var _vm = this
   var _h = _vm.$createElement
   var _c = _vm._self._c || _h
-  return _c("header", { staticClass: "Header" }, [
-    _c("div", { staticClass: "nav" }, [
-      _c("div", { staticClass: "logo", on: { click: _vm.goToCompanyInfo } }, [
-        _c("img", {
-          attrs: {
-            src: "images/zzieut.png",
-            alt: "logo",
-            width: "35px",
-            height: "35px"
-          }
-        })
-      ]),
-      _vm._v(" "),
-      _c("div", { staticClass: "menutab" }, [
-        _c("div", { on: { click: _vm.goToCompanyInfo } }, [
-          _vm._v("찌읏 소개")
-        ]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToService } }, [_vm._v("서비스")]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToRecruit } }, [_vm._v("채용")]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToRegister } }, [_vm._v("로그인")])
-      ]),
-      _vm._v(" "),
-      _c(
-        "div",
-        { staticClass: "hamburger", on: { click: _vm.activeMenuHandler } },
-        [_c("span"), _vm._v(" "), _c("span"), _vm._v(" "), _c("span")]
-      )
-    ]),
-    _vm._v(" "),
-    _c(
-      "div",
-      { class: _vm.activeMenuVisible ? "activeMenu visible" : "activeMenu" },
-      [
-        _c("div", { on: { click: _vm.goToCompanyInfo } }, [
-          _vm._v("찌읏 소개")
-        ]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToService } }, [_vm._v("서비스")]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToRecruit } }, [_vm._v("채용")]),
-        _vm._v(" "),
-        _c("div", { on: { click: _vm.goToRegister } }, [_vm._v("로그인")])
-      ]
-    )
-  ])
+  return _c("div", [_vm._v(_vm._s(_vm.title))])
 }
 var staticRenderFns = []
 render._withStripped = true
@@ -42719,6 +42085,74 @@ function parse (str, options) {
       continue
     }
 
+<<<<<<< HEAD
+/***/ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec&":
+/*!************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/components/headers/DefaultHeader.vue?vue&type=template&id=0c0734ec& ***!
+  \************************************************************************************************************************************************************************************************************************/
+/*! exports provided: render, staticRenderFns */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "render", function() { return render; });
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "staticRenderFns", function() { return staticRenderFns; });
+var render = function() {
+  var _vm = this
+  var _h = _vm.$createElement
+  var _c = _vm._self._c || _h
+  return _c("header", { staticClass: "Header" }, [
+    _c("div", { staticClass: "nav" }, [
+      _c("div", { staticClass: "logo", on: { click: _vm.goToCompanyInfo } }, [
+        _c("img", {
+          attrs: {
+            src: "images/zzieut.png",
+            alt: "logo",
+            width: "35px",
+            height: "35px"
+          }
+        })
+      ]),
+      _vm._v(" "),
+      _c("div", { staticClass: "menutab" }, [
+        _c("div", { on: { click: _vm.goToCompanyInfo } }, [
+          _vm._v("찌읏 소개")
+        ]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToService } }, [_vm._v("서비스")]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToRecruit } }, [_vm._v("채용")]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToRegister } }, [_vm._v("로그인")])
+      ]),
+      _vm._v(" "),
+      _c(
+        "div",
+        { staticClass: "hamburger", on: { click: _vm.activeMenuHandler } },
+        [_c("span"), _vm._v(" "), _c("span"), _vm._v(" "), _c("span")]
+      )
+    ]),
+    _vm._v(" "),
+    _c(
+      "div",
+      { class: _vm.activeMenuVisible ? "activeMenu visible" : "activeMenu" },
+      [
+        _c("div", { on: { click: _vm.goToCompanyInfo } }, [
+          _vm._v("찌읏 소개")
+        ]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToService } }, [_vm._v("서비스")]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToRecruit } }, [_vm._v("채용")]),
+        _vm._v(" "),
+        _c("div", { on: { click: _vm.goToRegister } }, [_vm._v("로그인")])
+      ]
+    )
+  ])
+}
+var staticRenderFns = []
+render._withStripped = true
+=======
     var next = str[index];
     var prefix = res[2];
     var name = res[3];
@@ -42732,6 +42166,7 @@ function parse (str, options) {
       tokens.push(path);
       path = '';
     }
+>>>>>>> origin
 
     var partial = prefix != null && next != null && next !== prefix;
     var repeat = modifier === '+' || modifier === '*';
@@ -57691,7 +57126,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "mapMutations", function() { return mapMutations; });
 /* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "mapState", function() { return mapState; });
 /*!
- * vuex v3.6.0
+ * vuex v3.5.1
  * (c) 2020 Evan You
  * @license MIT
  */
@@ -57978,11 +57413,7 @@ ModuleCollection.prototype.isRegistered = function isRegistered (path) {
   var parent = this.get(path.slice(0, -1));
   var key = path[path.length - 1];
 
-  if (parent) {
-    return parent.hasChild(key)
-  }
-
-  return false
+  return parent.hasChild(key)
 };
 
 function update (path, targetModule, newModule) {
@@ -58922,7 +58353,7 @@ function pad (num, maxLength) {
 var index = {
   Store: Store,
   install: install,
-  version: '3.6.0',
+  version: '3.5.1',
   mapState: mapState,
   mapMutations: mapMutations,
   mapGetters: mapGetters,
@@ -58998,387 +58429,6 @@ module.exports = function(module) {
 	}
 	return module;
 };
-
-
-/***/ }),
-
-/***/ "./node_modules/yallist/yallist.js":
-/*!*****************************************!*\
-  !*** ./node_modules/yallist/yallist.js ***!
-  \*****************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-module.exports = Yallist
-
-Yallist.Node = Node
-Yallist.create = Yallist
-
-function Yallist (list) {
-  var self = this
-  if (!(self instanceof Yallist)) {
-    self = new Yallist()
-  }
-
-  self.tail = null
-  self.head = null
-  self.length = 0
-
-  if (list && typeof list.forEach === 'function') {
-    list.forEach(function (item) {
-      self.push(item)
-    })
-  } else if (arguments.length > 0) {
-    for (var i = 0, l = arguments.length; i < l; i++) {
-      self.push(arguments[i])
-    }
-  }
-
-  return self
-}
-
-Yallist.prototype.removeNode = function (node) {
-  if (node.list !== this) {
-    throw new Error('removing node which does not belong to this list')
-  }
-
-  var next = node.next
-  var prev = node.prev
-
-  if (next) {
-    next.prev = prev
-  }
-
-  if (prev) {
-    prev.next = next
-  }
-
-  if (node === this.head) {
-    this.head = next
-  }
-  if (node === this.tail) {
-    this.tail = prev
-  }
-
-  node.list.length--
-  node.next = null
-  node.prev = null
-  node.list = null
-}
-
-Yallist.prototype.unshiftNode = function (node) {
-  if (node === this.head) {
-    return
-  }
-
-  if (node.list) {
-    node.list.removeNode(node)
-  }
-
-  var head = this.head
-  node.list = this
-  node.next = head
-  if (head) {
-    head.prev = node
-  }
-
-  this.head = node
-  if (!this.tail) {
-    this.tail = node
-  }
-  this.length++
-}
-
-Yallist.prototype.pushNode = function (node) {
-  if (node === this.tail) {
-    return
-  }
-
-  if (node.list) {
-    node.list.removeNode(node)
-  }
-
-  var tail = this.tail
-  node.list = this
-  node.prev = tail
-  if (tail) {
-    tail.next = node
-  }
-
-  this.tail = node
-  if (!this.head) {
-    this.head = node
-  }
-  this.length++
-}
-
-Yallist.prototype.push = function () {
-  for (var i = 0, l = arguments.length; i < l; i++) {
-    push(this, arguments[i])
-  }
-  return this.length
-}
-
-Yallist.prototype.unshift = function () {
-  for (var i = 0, l = arguments.length; i < l; i++) {
-    unshift(this, arguments[i])
-  }
-  return this.length
-}
-
-Yallist.prototype.pop = function () {
-  if (!this.tail) {
-    return undefined
-  }
-
-  var res = this.tail.value
-  this.tail = this.tail.prev
-  if (this.tail) {
-    this.tail.next = null
-  } else {
-    this.head = null
-  }
-  this.length--
-  return res
-}
-
-Yallist.prototype.shift = function () {
-  if (!this.head) {
-    return undefined
-  }
-
-  var res = this.head.value
-  this.head = this.head.next
-  if (this.head) {
-    this.head.prev = null
-  } else {
-    this.tail = null
-  }
-  this.length--
-  return res
-}
-
-Yallist.prototype.forEach = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this.head, i = 0; walker !== null; i++) {
-    fn.call(thisp, walker.value, i, this)
-    walker = walker.next
-  }
-}
-
-Yallist.prototype.forEachReverse = function (fn, thisp) {
-  thisp = thisp || this
-  for (var walker = this.tail, i = this.length - 1; walker !== null; i--) {
-    fn.call(thisp, walker.value, i, this)
-    walker = walker.prev
-  }
-}
-
-Yallist.prototype.get = function (n) {
-  for (var i = 0, walker = this.head; walker !== null && i < n; i++) {
-    // abort out of the list early if we hit a cycle
-    walker = walker.next
-  }
-  if (i === n && walker !== null) {
-    return walker.value
-  }
-}
-
-Yallist.prototype.getReverse = function (n) {
-  for (var i = 0, walker = this.tail; walker !== null && i < n; i++) {
-    // abort out of the list early if we hit a cycle
-    walker = walker.prev
-  }
-  if (i === n && walker !== null) {
-    return walker.value
-  }
-}
-
-Yallist.prototype.map = function (fn, thisp) {
-  thisp = thisp || this
-  var res = new Yallist()
-  for (var walker = this.head; walker !== null;) {
-    res.push(fn.call(thisp, walker.value, this))
-    walker = walker.next
-  }
-  return res
-}
-
-Yallist.prototype.mapReverse = function (fn, thisp) {
-  thisp = thisp || this
-  var res = new Yallist()
-  for (var walker = this.tail; walker !== null;) {
-    res.push(fn.call(thisp, walker.value, this))
-    walker = walker.prev
-  }
-  return res
-}
-
-Yallist.prototype.reduce = function (fn, initial) {
-  var acc
-  var walker = this.head
-  if (arguments.length > 1) {
-    acc = initial
-  } else if (this.head) {
-    walker = this.head.next
-    acc = this.head.value
-  } else {
-    throw new TypeError('Reduce of empty list with no initial value')
-  }
-
-  for (var i = 0; walker !== null; i++) {
-    acc = fn(acc, walker.value, i)
-    walker = walker.next
-  }
-
-  return acc
-}
-
-Yallist.prototype.reduceReverse = function (fn, initial) {
-  var acc
-  var walker = this.tail
-  if (arguments.length > 1) {
-    acc = initial
-  } else if (this.tail) {
-    walker = this.tail.prev
-    acc = this.tail.value
-  } else {
-    throw new TypeError('Reduce of empty list with no initial value')
-  }
-
-  for (var i = this.length - 1; walker !== null; i--) {
-    acc = fn(acc, walker.value, i)
-    walker = walker.prev
-  }
-
-  return acc
-}
-
-Yallist.prototype.toArray = function () {
-  var arr = new Array(this.length)
-  for (var i = 0, walker = this.head; walker !== null; i++) {
-    arr[i] = walker.value
-    walker = walker.next
-  }
-  return arr
-}
-
-Yallist.prototype.toArrayReverse = function () {
-  var arr = new Array(this.length)
-  for (var i = 0, walker = this.tail; walker !== null; i++) {
-    arr[i] = walker.value
-    walker = walker.prev
-  }
-  return arr
-}
-
-Yallist.prototype.slice = function (from, to) {
-  to = to || this.length
-  if (to < 0) {
-    to += this.length
-  }
-  from = from || 0
-  if (from < 0) {
-    from += this.length
-  }
-  var ret = new Yallist()
-  if (to < from || to < 0) {
-    return ret
-  }
-  if (from < 0) {
-    from = 0
-  }
-  if (to > this.length) {
-    to = this.length
-  }
-  for (var i = 0, walker = this.head; walker !== null && i < from; i++) {
-    walker = walker.next
-  }
-  for (; walker !== null && i < to; i++, walker = walker.next) {
-    ret.push(walker.value)
-  }
-  return ret
-}
-
-Yallist.prototype.sliceReverse = function (from, to) {
-  to = to || this.length
-  if (to < 0) {
-    to += this.length
-  }
-  from = from || 0
-  if (from < 0) {
-    from += this.length
-  }
-  var ret = new Yallist()
-  if (to < from || to < 0) {
-    return ret
-  }
-  if (from < 0) {
-    from = 0
-  }
-  if (to > this.length) {
-    to = this.length
-  }
-  for (var i = this.length, walker = this.tail; walker !== null && i > to; i--) {
-    walker = walker.prev
-  }
-  for (; walker !== null && i > from; i--, walker = walker.prev) {
-    ret.push(walker.value)
-  }
-  return ret
-}
-
-Yallist.prototype.reverse = function () {
-  var head = this.head
-  var tail = this.tail
-  for (var walker = head; walker !== null; walker = walker.prev) {
-    var p = walker.prev
-    walker.prev = walker.next
-    walker.next = p
-  }
-  this.head = tail
-  this.tail = head
-  return this
-}
-
-function push (self, item) {
-  self.tail = new Node(item, self.tail, null, self)
-  if (!self.head) {
-    self.head = self.tail
-  }
-  self.length++
-}
-
-function unshift (self, item) {
-  self.head = new Node(item, null, self.head, self)
-  if (!self.tail) {
-    self.tail = self.head
-  }
-  self.length++
-}
-
-function Node (value, prev, next, list) {
-  if (!(this instanceof Node)) {
-    return new Node(value, prev, next, list)
-  }
-
-  this.list = list
-  this.value = value
-
-  if (prev) {
-    prev.next = this
-    this.prev = prev
-  } else {
-    this.prev = null
-  }
-
-  if (next) {
-    next.prev = this
-    this.next = next
-  } else {
-    this.next = null
-  }
-}
 
 
 /***/ }),
@@ -59908,22 +58958,22 @@ var map = {
 	"./ExampleComponent": [
 		"./resources/js/components/ExampleComponent.vue",
 		9,
-		5
+		6
 	],
 	"./ExampleComponent.vue": [
 		"./resources/js/components/ExampleComponent.vue",
 		9,
-		5
+		6
 	],
 	"./Index": [
 		"./resources/js/components/Index.vue",
 		9,
-		6
+		7
 	],
 	"./Index.vue": [
 		"./resources/js/components/Index.vue",
 		9,
-		6
+		7
 	],
 	"./companyInfo/CompanyInfo": [
 		"./resources/js/components/companyInfo/CompanyInfo.vue",
@@ -59940,54 +58990,62 @@ var map = {
 	"./companyInfo/CompanyInfoData": [
 		"./resources/js/components/companyInfo/CompanyInfoData.js",
 		9,
+<<<<<<< HEAD
 		15
+=======
+		18
+>>>>>>> origin
 	],
 	"./companyInfo/CompanyInfoData.js": [
 		"./resources/js/components/companyInfo/CompanyInfoData.js",
 		9,
+<<<<<<< HEAD
 		15
+=======
+		18
+>>>>>>> origin
 	],
 	"./companyInfo/companyInfoComponents/History": [
 		"./resources/js/components/companyInfo/companyInfoComponents/History.vue",
 		9,
-		7
+		8
 	],
 	"./companyInfo/companyInfoComponents/History.vue": [
 		"./resources/js/components/companyInfo/companyInfoComponents/History.vue",
 		9,
-		7
+		8
 	],
 	"./companyInfo/companyInfoComponents/InfoTable": [
 		"./resources/js/components/companyInfo/companyInfoComponents/InfoTable.vue",
 		9,
-		8
+		9
 	],
 	"./companyInfo/companyInfoComponents/InfoTable.vue": [
 		"./resources/js/components/companyInfo/companyInfoComponents/InfoTable.vue",
 		9,
-		8
+		9
 	],
 	"./companyInfo/companyInfoComponents/MainBanner": [
 		"./resources/js/components/companyInfo/companyInfoComponents/MainBanner.vue",
 		9,
 		0,
-		9
+		10
 	],
 	"./companyInfo/companyInfoComponents/MainBanner.vue": [
 		"./resources/js/components/companyInfo/companyInfoComponents/MainBanner.vue",
 		9,
 		0,
-		9
+		10
 	],
 	"./companyInfo/companyInfoComponents/MembersCard": [
 		"./resources/js/components/companyInfo/companyInfoComponents/MembersCard.vue",
 		9,
-		10
+		11
 	],
 	"./companyInfo/companyInfoComponents/MembersCard.vue": [
 		"./resources/js/components/companyInfo/companyInfoComponents/MembersCard.vue",
 		9,
-		10
+		11
 	],
 	"./footer/Footer": [
 		"./resources/js/components/footer/Footer.vue",
@@ -60008,22 +59066,22 @@ var map = {
 	"./main/Index": [
 		"./resources/js/components/main/Index.vue",
 		9,
-		11
+		12
 	],
 	"./main/Index.vue": [
 		"./resources/js/components/main/Index.vue",
 		9,
-		11
+		12
 	],
 	"./main/Test": [
 		"./resources/js/components/main/Test.vue",
 		9,
-		12
+		13
 	],
 	"./main/Test.vue": [
 		"./resources/js/components/main/Test.vue",
 		9,
-		12
+		13
 	],
 	"./recruit/Description": [
 		"./resources/js/components/recruit/Description.vue",
@@ -60038,101 +59096,153 @@ var map = {
 	"./recruit/Menu": [
 		"./resources/js/components/recruit/Menu.vue",
 		9,
-		13
+		14
 	],
 	"./recruit/Menu.vue": [
 		"./resources/js/components/recruit/Menu.vue",
 		9,
-		13
+		14
 	],
 	"./recruit/Recruit": [
 		"./resources/js/components/recruit/Recruit.vue",
 		9,
 		1,
-		3
+		4
 	],
 	"./recruit/Recruit.vue": [
 		"./resources/js/components/recruit/Recruit.vue",
 		9,
 		1,
-		3
+		4
 	],
 	"./recruit/content": [
 		"./resources/js/components/recruit/content.json",
 		3,
+<<<<<<< HEAD
 		16
+=======
+		19
+>>>>>>> origin
 	],
 	"./recruit/content.json": [
 		"./resources/js/components/recruit/content.json",
 		3,
+<<<<<<< HEAD
 		16
+=======
+		19
+>>>>>>> origin
 	],
 	"./register/Register": [
 		"./resources/js/components/register/Register.vue",
 		9,
+<<<<<<< HEAD
 		22
+=======
+		3
+>>>>>>> origin
 	],
 	"./register/Register.vue": [
 		"./resources/js/components/register/Register.vue",
 		9,
+<<<<<<< HEAD
 		22
+=======
+		3
+>>>>>>> origin
 	],
 	"./register/components/Login": [
 		"./resources/js/components/register/components/Login.vue",
 		9,
+<<<<<<< HEAD
 		20
+=======
+		15
+>>>>>>> origin
 	],
 	"./register/components/Login.vue": [
 		"./resources/js/components/register/components/Login.vue",
 		9,
+<<<<<<< HEAD
 		20
+=======
+		15
+>>>>>>> origin
 	],
 	"./register/components/Signup": [
 		"./resources/js/components/register/components/Signup.vue",
 		9,
+<<<<<<< HEAD
 		21
+=======
+		16
+>>>>>>> origin
 	],
 	"./register/components/Signup.vue": [
 		"./resources/js/components/register/components/Signup.vue",
 		9,
+<<<<<<< HEAD
 		21
+=======
+		16
+>>>>>>> origin
 	],
 	"./service/Img/찜.png": [
 		"./resources/js/components/service/Img/찜.png",
 		7,
+<<<<<<< HEAD
 		17
+=======
+		20
+>>>>>>> origin
 	],
 	"./service/Img/찜스토어.png": [
 		"./resources/js/components/service/Img/찜스토어.png",
 		7,
+<<<<<<< HEAD
 		18
+=======
+		21
+>>>>>>> origin
 	],
 	"./service/Img/츄릅.png": [
 		"./resources/js/components/service/Img/츄릅.png",
 		7,
+<<<<<<< HEAD
 		19
+=======
+		22
+>>>>>>> origin
 	],
 	"./service/Platform": [
 		"./resources/js/components/service/Platform.vue",
 		9,
+<<<<<<< HEAD
 		14
+=======
+		17
+>>>>>>> origin
 	],
 	"./service/Platform.vue": [
 		"./resources/js/components/service/Platform.vue",
 		9,
+<<<<<<< HEAD
 		14
+=======
+		17
+>>>>>>> origin
 	],
 	"./service/Service": [
 		"./resources/js/components/service/Service.vue",
 		9,
 		0,
-		4
+		5
 	],
 	"./service/Service.vue": [
 		"./resources/js/components/service/Service.vue",
 		9,
 		0,
-		4
+		5
 	]
 };
 function webpackAsyncContext(req) {
@@ -60478,7 +59588,11 @@ function getDefaultFooter() {
     name: "Service",
     components: {
       "default": Object(_utils__WEBPACK_IMPORTED_MODULE_0__["asyncComponent"])("service/Service"),
+<<<<<<< HEAD
       header: getDefaultHeader("Service"),
+=======
+      header: getDefaultHeader("service"),
+>>>>>>> origin
       footer: getDefaultFooter()
     },
     meta: {
@@ -60489,7 +59603,11 @@ function getDefaultFooter() {
     name: "Recruit",
     components: {
       "default": Object(_utils__WEBPACK_IMPORTED_MODULE_0__["asyncComponent"])("recruit/Recruit"),
+<<<<<<< HEAD
       header: getDefaultHeader("Recruit"),
+=======
+      header: getDefaultHeader("recruit"),
+>>>>>>> origin
       footer: getDefaultFooter()
     },
     meta: {
@@ -60500,7 +59618,11 @@ function getDefaultFooter() {
     name: "Register",
     components: {
       "default": Object(_utils__WEBPACK_IMPORTED_MODULE_0__["asyncComponent"])("register/Register"),
+<<<<<<< HEAD
       header: getDefaultHeader("Register"),
+=======
+      header: getDefaultHeader("register"),
+>>>>>>> origin
       footer: getDefaultFooter()
     },
     meta: {
@@ -60873,8 +59995,13 @@ var Store = /*#__PURE__*/function (_Vuex$Store) {
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
+<<<<<<< HEAD
 __webpack_require__(/*! C:\Users\ououh\Desktop\zzieut-homepage\resources\js\app.js */"./resources/js/app.js");
 module.exports = __webpack_require__(/*! C:\Users\ououh\Desktop\zzieut-homepage\resources\sass\app.scss */"./resources/sass/app.scss");
+=======
+__webpack_require__(/*! /Users/jyj/Documents/zzieut-homepage/resources/js/app.js */"./resources/js/app.js");
+module.exports = __webpack_require__(/*! /Users/jyj/Documents/zzieut-homepage/resources/sass/app.scss */"./resources/sass/app.scss");
+>>>>>>> origin
 
 
 /***/ })

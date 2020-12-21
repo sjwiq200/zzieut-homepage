@@ -22,9 +22,17 @@
         </div>
     </div>
 </template>
+<<<<<<< HEAD
 <script>
 import Login from "./components/Login";
 import Signup from "./components/Signup";
+=======
+
+<script>
+import Login from "./components/Login";
+import Signup from "./components/Signup";
+
+>>>>>>> origin
 export default {
     components: { Login, Signup },
     data() {
